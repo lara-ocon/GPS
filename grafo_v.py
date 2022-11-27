@@ -1,7 +1,6 @@
 from typing import List, Tuple, Dict
 # import networkx as nx
 import sys
-import numpy as np
 
 import heapq
 
@@ -9,23 +8,16 @@ INFTY=sys.float_info.max
 
 class Data:
 
-    def __init__(self, velocidad, nombre, distancia):
-        self.vel = velocidad
-        self.nombre = nombre
-        self.distancia = distancia
+    def __init__(self):
+        ...
+        # todo esto lo definiremos mas adelante, pero  guardaremos info como la vel max...
 
-        # todo esto lo definiremos mas adelante, pero  guardaremos info como la 
-        # velocidad maxima de la vía, su nombre, su distancia, igual su tiempo...
-        # en el peso guardaremos en función de lo que elija el usuario:
-        # camino mas rapido -> peso = self.tiempo = self.distancia * self.velocidad
-        # camino con menor distancia -> peso = self.distancia 
-
-
+# ESTO NO LO USAMOSSSSS
 class Arista:
 
     def __init__(self, origen, destino, data, peso):
-        self.origen = origen           # esto es el nodo origen (objeto vertice)
-        self.destino = destino         # esto es el nodo destino (objeto vertice)
+        self.origen = origen           # esto es el nodo origen
+        self.destino = destino         # esto es el nodo destino
         self.data = data               # data es un objeto que puede ser cualquier cosa
         self.peso = peso
 
@@ -86,13 +78,12 @@ class Grafo:
             weight: peso de la arista
         Returns: None
         """
-        # recorremos la lista con los numeros asociados a los vertices para comprobar si existen
-        # dichos vertices
-        if (s.num and t.num in [vertice.num for vertice in list(self.vertices.values())]):
+        # ESTO NO VA PORQUE S Y T SON OBJETOS, NO VÉRTICES
+        if s.num and t.num in [vertice.num for vertice in list(self.vertices.values())]:
             self.aristas.append(Arista(s, t, data, weight)) # no es dirigido
-            if not self.dirigido:
-                # añadimos las aristas por duplicado si no es grafo dirigido
-                self.aristas.append(Arista(t, s, data, weight))
+            if self.dirigido:
+                self.aristas.append(Arista(t, s, data, weight)) # añadimos las aristas por duplicado si no es grafo dirigido
+
     
     def eliminar_vertice(self, v:object) -> None:
         """ Si el objeto v es un vértice del grafo lo elimiina.
@@ -101,15 +92,12 @@ class Grafo:
         Args: v vértice que se quiere eliminar
         Returns: None
         """
-        # buscamos las coordenadas del vertice, en caso de no existir ducho vertice
-        # no haremos nada (como teneos guardados los vertices en un diccionario donde 
-        # las claves son las coordenadas, la búsqueda será más rápida)
-        if (v.coordenadas[0], v.coordenadas[1]) in self.vertices:
-            vertice = self.vertices.pop((v.coordenadas[0], v.coordenadas[1]))
-            # eliminamos sus aristas entrantes y salientes
-            for a in self.aristas:
-                if vertice.num in [a.origen.num, a.destino.num]:
-                    self.aristas.pop(a) # eliminamos la arista que pasa por el nodo
+        # ESTO NO VA PORQUE V ES OBJETO, NO VÉRTICE
+        if v.coordenadas in [vertice.coordenadas for vertice in self.vertices]:
+            self.vertices.remove(v)
+        
+        # HABRIA QUE ELIMINAR LAS ARISTAS QUE PASAN POR V!!!
+
 
 
     def eliminar_arista(self, s:object, t:object) -> None:
@@ -122,7 +110,7 @@ class Grafo:
             t: vértice de destino de la arista
         Returns: None
         """
-        if ((s.coordenadas[0], s.coordenadas[1]) and (t.coordenadas[0],t.coordenadas[1])  in [vertice for vertice in self.vertices]):
+        if (s.coordenadas and t.coordenadas in [vertice.coordenadas for vertice in self.vertices]):
             for a in self.aristas:
                 if (a.origen.coordenadas == s.coordenadas) and (a.destino.coordenadas == t.coordenadas):
                     self.aristas.remove(a)
@@ -130,6 +118,8 @@ class Grafo:
                     # si no es dirido, las aristas estan duplicadas, eliminamos su duplicada
                     if (a.origen.coordenadas == t.coordenadas) and (a.destino.coordenadas == s.coordenadas):
                         self.aristas.remove(a)
+        
+        # HABRIA QUE ELIMINAR LOS VERTICES SI SE QUEDAN SIN ARISTAS???
     
 
     def obtener_arista(self, s:object, t:object) -> Tuple[object, float] or None:
@@ -143,14 +133,14 @@ class Grafo:
         Returns: Una tupla (a,w) con los datos de la arista "a" y su peso
         "w" si la arista existe. None en caso contrario.
         """
-        if (s.coordenadas and t.coordenadas in [vertice.coordenadas for vertice in self.vertices.values()]):
+        if (s.coordenadas and t.coordenadas in [vertice.coordenadas for vertice in self.vertices]):
             for a in self.aristas:
                 if (a.origen.coordenadas == s.coordenadas) and (a.destino.coordenadas == t.coordenadas):
-                    return (a.data, a.peso)
+                    return tuple(a.data, a.peso)
                 if not self.dirigido:
                     # si no es dirido, las aristas estan duplicadas (devolvemos la primera que encuentre)
                     if (a.origen.coordenadas == t.coordenadas) and (a.destino.coordenadas == s.coordenadas):
-                        return (a.data, a.peso)
+                        return tuple(a.data, a.peso)
 
         return None
 
@@ -165,18 +155,16 @@ class Grafo:
         adyacentes a u si u es un vértice del grafo y None en caso
         contrario
         """
-        print(f"Vamos a hacer lista de adyacencia del nodo {u.num}")
-        if (u.coordenadas[0], u.coordenadas[1]) in self.vertices:
-            print("EL vertice está")
+        if u.coordenadas in [vertice.coordenadas for vertice in self.vertices]:
             lista = []
             for a in self.aristas:
-                # Esto lo hace bien tanto para dirigido como para no 
-                # dirigido (en el caso de no dirigido, las aristas estan 
-                # duplicadas)
-                if a.origen.coordenadas == u.coordenadas:
-                    print("tenemos arista")
+                if a.origen.coordenadas == u.coordenadas:                   # Esto lo hace bien tanto para dirigido como para no dirigido (en el caso de no dirigido, las aristas estan duplicadas)
                     lista.append(a.destino)
-
+                """ Esto creo que no es asi porque en los grafos dirigidos
+                la adyacencia es solo aquellos en los que u es origen
+                elif a.destino == u:
+                    lista.append(a.origen)
+                """
             return lista
         else:
             return None
@@ -192,7 +180,7 @@ class Grafo:
         Returns: El grado saliente (int) si el vértice existe y
         None en caso contrario.
         """
-        if (v.coordenadas[0], v.coordenadas[1]) in self.vertices:
+        if v.coordenadas in [vertice.coordenadas for vertice in self.vertices]:
             grado = 0
             for a in self.aristas:
                 if a.origen.coordenadas == v.coordenadas:
@@ -211,7 +199,7 @@ class Grafo:
         Returns: El grado entrante (int) si el vértice existe y
         None en caso contrario.
         """
-        if (v.coordenadas[0], v.coordenadas[1]) in self.vertices:
+        if v.coordenadas in [vertice.coordenadas for vertice in self.vertices]:
             grado = 0
             for a in self.aristas:
                 if a.destino.coordenadas == v.coordenadas:
@@ -231,9 +219,8 @@ class Grafo:
         Returns: El grado (int) o grado saliente (int) según corresponda
         si el vértice existe y None en caso contrario.
         """
-        if (v.coordenadas[0], v.coordenadas[1]) in self.vertices:
-            # esto funciona para dirigido y no dirigido, porque en 
-            # no dirigido las aristas estan duplicadas
+        if v in self.vertices:
+            # esto funciona para dirigido y no dirigido, porque en no dirigido las aristas estan duplicadas
             return self.grado_saliente(v)
         else:
             return None
@@ -249,42 +236,7 @@ class Grafo:
         Returns: Devuelve un diccionario que indica, para cada vértice alcanzable
         desde "origen", qué vértice es su padre en el árbol abarcador mínimo.
         """
-        # inicializamos los diccionarios con la distancia, padre, y estado de cada vertice
-        distancia = dict()
-        padre = dict()
-        visitado = dict()
-        # recordamos que self.vertices es un diccionario del tipo {coordenadas:obj(vertice)}
-        for v in self.vertices.values():
-            distancia[v.num] = np.inf
-            padre[v.num] = None
-            visitado[v.num] = False
-        distancia[origen.num] = 0
-        
-        # inicialmente Q solo contiene el vertice origen
-        Q = [origen]
-        while Q:
-            # Extraer v de Q de menor d
-            d = np.inf
-            for nodo in Q:
-                if distancia[nodo.num] < d:
-                    d = distancia[nodo.num]
-                    u = nodo
-
-            if visitado[u.num] == False:
-                visitado[u.num] = True
-                Q.remove(u)
-                for w in self.lista_adyacencia(u): # nodos adyacentes
-                    dist_entre = list(self.obtener_arista(u, w))[1] # sacamos su peso
-                    if distancia[w.num] > distancia[u.num] + dist_entre: # actualizar el valor de su distancia (distancia asociada a la arista con u y v)
-                        distancia[w.num] = distancia[u.num]+ dist_entre
-                        padre[w.num] = u
-                        Q.append(w)
-            else:
-                Q.remove(u)
-                
-        return padre
-
-
+        pass
 
     def camino_minimo(self, origen:object, destino:object) -> List[object]:
         pass
@@ -298,33 +250,7 @@ class Grafo:
         Returns: Devuelve un diccionario que indica, para cada vértice del
         grafo, qué vértice es su padre en el árbol abarcador mínimo.
         """
-        Q = []
-        coste_minimo = dict()
-        padre = dict()
-        for v in self.vertices:
-            coste_minimo[v] = np.inf
-            padre[v] = None
-            Q.append(v)
-        # como en la primera iteracion sacamos el primero establecemos su coste a 0
-        coste_minimo[Q[0]]=0
-        while Q:
-            # extraer nodo con coste minimo
-            cost_min = np.inf
-            for nodo,coste in coste_minimo.items():
-                if coste < cost_min:
-                    cost_min = coste
-                    nodo_min = nodo
-            # trabajamos sobre el nodo de coste minimo
-            Q.pop(nodo_min)
-            for w in self.lista_adyacencia(nodo_min):
-                if w in Q:
-                    dist_entre = list(self.obtener_arista(u, w))[0]['distancia']
-                    if dist_entre < coste_minimo[w]:
-                        coste_minimo[w] = dist_entre
-                        padre[w] = nodo_min
-                        # actualizar peso de w a dist_entre en Q
-        
-        return padre
+        pass
                     
 
     def kruskal(self)-> List[Tuple[object,object]]:
@@ -336,29 +262,8 @@ class Grafo:
         de los pares de vértices del grafo
         que forman las aristas del arbol abarcador mínimo.
         """
-        aristas_aam = [] # aristas del árbol abarcador minimo
-
-        # ordenamos el peso de las aristas: generar diccionario con peso y arista, 
-        # ordenar diccionario y convertir en lista que contenga solo las aristas
-        pesos_aristas = dict()
-        for a in self.aristas:
-            id_a = f'({a.origen},{a.destino})'
-            pesos_aristas[id_a] = a.peso
-        dict_minimo = dict(sorted(pesos_aristas.items(), key=lambda x:x[1]))
-        lista_min = dict_minimo.keys()
-
-        C = dict()
-        for v in self.vertices:
-            C[v.coordenadas] = {v.coordenadas}
-
-        while lista_min:
-            arista_min = L[0]
-            if C[arista_min.origen.coordenadas] != C[arista_min.destino.coordenadas]:
-                aristas_aam.append(arista_min)
-                C[arista_min.origen.coordenadas]=C[arista_min.origen.coordenadas]+'-'+C[arista_min.destino.coordenadas]
-                for w in C.keys():
-                    C[w] = C[arista_min.origen.coordenadas]
-   
+        pass
+                
     
     #### NetworkX ####
     #def convertir_a_NetworkX(self)-> nx.Graph or nx.DiGraph:
