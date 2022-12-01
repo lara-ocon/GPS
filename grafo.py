@@ -1,22 +1,30 @@
+# Librería Grafo - Practica final Matemática Discreta - IMAT
+# ICAI, Universidad Pontificia Comillas
+# Grupo 2: Lucía Prado Fernandez-Vega y Lara Ocón Madrid
+
+
+# importamos las librerías que vamos a usar
 from typing import List, Tuple, Dict
 import networkx as nx
 import sys
 import numpy as np
-
 import heapq
+
 
 INFTY=sys.float_info.max
 
-class Arista:
 
+# definimos una clase arista donde guardaremos información sobre las aristas
+class Arista:
     def __init__(self, origen, destino, data, peso):
         self.origen = origen           # esto es el nodo origen (objeto vertice)
         self.destino = destino         # esto es el nodo destino (objeto vertice)
         self.data = data               # data es un objeto que puede ser cualquier cosa
-        self.peso = peso
+        self.peso = peso               # peso es un número real
 
+
+# constuimos la clase grafo
 class Grafo:
-    #Diseñar y construirl a clase grafo
 
     def __init__(self,dirigido=False):
         """ Crea un grafo dirigido o no dirigido.
@@ -27,7 +35,8 @@ class Grafo:
         inicializado sin vértices ni aristas.
         """
         self.dirigido = dirigido
-        self.vertices = {}       # diccionario object : [aristas] donde aristas son objects
+        self.vertices = {}       # diccionario = {object : [aristas]} donde aristas son objects
+
 
     #### Operaciones básicas del TAD ####
     def es_dirigido(self)->bool:
@@ -45,7 +54,7 @@ class Grafo:
         Args: v vértice que se quiere agregar
         Returns: None
         """
-        self.vertices[v] = [] # inicialmente no tiene aristas  
+        self.vertices[v] = [] # inicialmente consideramos que no tiene aristas
 
 
     def agregar_arista(self, s:object, t:object, data:object, weight:float = 1) -> None:
@@ -61,10 +70,11 @@ class Grafo:
             weight: peso de la arista
         Returns: None
         """
-        # recorremos la lista con los numeros asociados a los vertices para comprobar si existen
-        # dichos vertices
+        # recorremos la lista con los numeros asociados a los vertices para 
+        # comprobar si existen dichos vertices, y en caso de que existan, añadimos
+        # la arista, además, si no es dirigido, también la añadimos
         if (s and t in self.vertices):
-            self.vertices[s].append(Arista(s,t, data, weight)) # no es dirigido
+            self.vertices[s].append(Arista(s,t, data, weight))
             if not self.dirigido:
                 # añadimos las aristas por duplicado si no es grafo dirigido
                 self.vertices[t].append(Arista(t,s, data, weight))
@@ -90,7 +100,6 @@ class Grafo:
                         self.vertices[vertice].remove(arista)
                 
 
-#
     def eliminar_arista(self, s:object, t:object) -> None:
         """ Si los objetos s y t son vértices del grafo y existe
         una arista de u a v la elimina.
@@ -148,8 +157,8 @@ class Grafo:
         contrario
         """
         # dado que nuestro diccionario de vertices, guarda de por si para cada
-        # clave vertice, su lista de adyacencia, solo tenemos que devolver los destinos
-        # de las aristas que salen del vertice
+        # clave vertice, su lista de adyacencia, solo tenemos que devolver los 
+        # destinos de las aristas que salen del vertice
         if u in self.vertices:
             return [a.destino for a in self.vertices[u]]
         else:
@@ -302,8 +311,6 @@ class Grafo:
             else:
                 Q.remove(u)
                 
-
-
 
     def prim(self) -> Dict[object,object]:
         """ Calcula un Árbol Abarcador Mínimo para el grafo
