@@ -1,11 +1,9 @@
 import grafo as gf
 import pandas as pd
-import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
-import matplotlib.pyplot as plt
-import time
+import time, os, sys
 
 # creamos una clase vertice que dado el atributo coordenadas, 
 # si tiene las mismas coordenadas considere que es el mismo objeto
@@ -22,7 +20,12 @@ class Vertice:
     def __eq__(self, other):
         # esto lo que hace es que si dos vertices tienen las mismas coordenadas
         # se consideran iguales y por tanto tienen el mismo hash
-        return self.coords == other.coords
+        try:
+            eq = (self.coords == other.coords)
+        except:
+            eq = False
+            
+        return eq
 
     def __repr__(self):
         return str(self.num)
@@ -189,32 +192,92 @@ def pasar_network_x(grafo, nombre):
     plt.savefig(nombre)
 
 
-def Menu():
+def iniciar():
+    # leemos los csv, los ordenamos y creamos el grafo
+    print('\nCargando grafos...')
+    i = time.time()
+    grafo1, grafo2 = ordenar_csv()
+    f = time.time()
+    print(f'Grafos cargados correctamente en {f-i} secs\n')
+    return grafo1, grafo2
 
-    print('------------      BIENVENIDO AL GPS BROSKI      ----------------')
-    origen = input('Origen: ')
-    destino = input('Destino: ')
-#         Permitir´a al usuario seleccionar dos direcciones (origen y destino) de la base de datos de direcciones (“direcciones.csv”).
-# 3) Permitir´a elegir al usuario si desea encontrar la ruta m´as corta o m´as r´apida entre estos puntos.
-# 4) Usando el grafo correspondiente en funci´on de lo elegido en el punto (3), se calcular´a el camino m´ınimo desde el
-# origen al destino. Para ello, se deber´an usar las funciones programadas en grafo.py.
-# 5) La aplicaci´on analizar´a dicho camino y construir´a una lista de instrucciones detalladas que permitan a un autom´ovil
-# navegar desde el origen hasta el destino.
-# 6) Finalmente, usando NetworkX, se mostrar´a la ruta elegida resaltada sobre el grafo del callejero.
-# 7) Tras mostrar la ruta, se volver´a al punto 2 para seleccionar una nueva ruta hasta que se introduzca un origen o
-# destino vac´ıos.
 
-# instrucciones:
-# distancia (en metros) se debe continuar por cada v´ıa antes de tomar un giro hacia otra calle.
-# Al tomar un desv´ıo, cu´al ser´a el nombre de la siguiente calle por la que se deber´a circular.
-#  A la hora de girar, si se debe girar a la izquierda o a la derecha. Opcionalmente, si hay un cruce m´ultiple, se precisar´a
-# por qu´e salida debe continuarse.
-#  El navegador no deber´ıa dar instrucciones redundantes mientras se contin´ue por la misma calle (m´as all´a de continuar
-# por dicha calle X metros)
+def encontrar_coordenadas_grafo(grafo, coordenadas):
+    # buscamos las coordenadas mas cercanas de nuestro grafo a las insertadas
+    # para ello calculamos la distancia de cada vertice a las coordenadas
+    # y nos quedamos con el minimo
+    minimo = np.inf
+    for v in grafo.vertices.keys():
+        distancia = np.sqrt((v.coords[0] - coordenadas[0])**2 + (v.coords[1] - coordenadas[1])**2)
+        if distancia < minimo:
+            minimo = distancia
+            vertice = v
+    return vertice
 
-i = time.time()
-grafo1, grafo2 = ordenar_csv()
-f = time.time()
-print(f-i)
-pasar_network_x(grafo1, 'grafo1.png')
-pasar_network_x(grafo2, 'grafo2.png')
+
+def Menu(grafo1, grafo2):
+    # limipamos la pantalla
+    print('\n------------      BIENVENIDO AL GPS BROSKI      ----------------\n')
+    salir = False
+    while not salir:
+        print('Introduce las coordenadas (en cm) de origen y destino para calcular la ruta más corta')
+        coordenadas_incorrectas = True
+        # seguiremos preguntando por coordenadas hasta que el usuario decida salir que será cuando
+        # no introduzca coordenadas de origen o destino
+        while coordenadas_incorrectas:
+            try:
+                origen = input('Origen: ').strip()
+                destino = input('Destino: ').strip()
+
+                if '' in [origen, destino]:
+                    # salimo del programa
+                    coordenadas_incorrectas = False
+                    salir = True
+                else:
+                    origen = [float(i) for i in origen.split(',')]
+                    destino = [float(i) for i in destino.split(',')]
+
+                    if len(origen) != 2 or len(destino) != 2:
+                        raise ValueError
+                    coordenadas_incorrectas = False
+            except ValueError:
+                print('Coordenadas invalidas, intentelo de nuevo')
+        
+        if not salir:
+            # calculamos la ruta mas corta, primero preguntamos si prefieren distancia o tiempo
+            print('¿Quieres calcular la ruta más corta en distancia o más rápida en tiempo?')
+            print('1. Más corta')
+            print('2. Más rápida')
+            opcion = 0
+            while opcion not in [1, 2]:
+                try:
+                    opcion = int(input('Opcion: '))
+                    if opcion not in [1, 2]:
+                        raise ValueError
+                except ValueError:
+                    print('Opcion invalida, intentelo de nuevo')
+                except KeyboardInterrupt:
+                    salir = True
+                    break
+
+            if not salir:
+                if opcion == 1:          # distancia
+                    grafo = grafo1
+                else:                    # tiempo
+                    grafo = grafo2
+                
+                # buscamos la ruta mas corta aplicando el algoritmo de dijkstra
+                origen = encontrar_coordenadas_grafo(grafo, origen)
+                destino = encontrar_coordenadas_grafo(grafo, destino)
+
+                ruta = grafo.camino_minimo(origen, destino)
+                print('La ruta más corta es: ')
+                for i in range(len(ruta)-1):
+                    print(f'{i+1}. {ruta[i].data["calle"]}, {ruta[i].data["num_calle"]}')
+
+                
+
+
+if __name__ == "__main__":
+    grafo1, grafo2 = iniciar()
+    Menu(grafo1, grafo2)
