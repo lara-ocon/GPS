@@ -41,6 +41,23 @@ def velocidad(tipo):
     else:
         return 50
 
+
+def unificar_rotondas_1(rotonda, df):
+    # cogemos las coordenadas que componen la rotonda y las unimos en una unica
+    # coordenada que será la media
+    coords = (df[df['Codigo de vía tratado'] == rotonda]['Coordenada X (Guia Urbana) cm (cruce)'].mean(), df[df['Codigo de vía tratado'] == rotonda]['Coordenada Y (Guia Urbana) cm (cruce)'].mean())
+    df.loc[df['Codigo de vía tratado'] == rotonda, 'Coordenada X (Guia Urbana) cm (cruce)'] = coords[0]
+    df.loc[df['Codigo de vía tratado'] == rotonda, 'Coordenada Y (Guia Urbana) cm (cruce)'] = coords[1]
+    return df, coords
+
+def unificar_rotondas_2(rotonda, df):
+    # cogemos las coordenadas que componen la rotonda y las unimos en una unica
+    # coordenada que será la media
+    df.loc[df['Codigo de via'] == rotonda, 'Coordenada X (Guia Urbana) cm'] = df[df['Codigo de via'] == rotonda]['Coordenada X (Guia Urbana) cm'].mean()
+    df.loc[df['Codigo de via'] == rotonda, 'Coordenada Y (Guia Urbana) cm'] = df[df['Codigo de via'] == rotonda]['Coordenada Y (Guia Urbana) cm'].mean()
+    return df
+
+
 def ordenar_csv():  
 
     """
@@ -72,12 +89,14 @@ def ordenar_csv():
     num_vertice = 0
     for fila in cruces.itertuples():
 
-        if actualizar:
-            calle_act = fila[1]
-            actualizar = False
-
-        calle = fila[1]                    
+        calle = fila[1]
         coords = (fila[11], fila[12])  
+
+        if 'GLORIETA' in fila[3]:
+            # unificamos las coordenadas de la rotonda
+            cruces, coords = unificar_rotondas_1(calle, cruces)
+            direcciones = unificar_rotondas_2(calle, direcciones)
+            
     
         if coords not in vertices:
             # agrgamos el vertice
@@ -93,6 +112,7 @@ def ordenar_csv():
         df_temporal = direcciones.loc[direcciones['Codigo de via'] == calle]
 
         for fila2 in df_temporal.itertuples():
+    
             try:
                 dist = np.sqrt((coords[0] - int(fila2[17]))**2 + (coords[1] - int(fila2[18]))**2)
                 if dist < menor_dist_calle:
@@ -121,6 +141,8 @@ def ordenar_csv():
     
             dict_vertices = dict(sorted(dict_vertices.items(), key=lambda item: item[0]))
             v = list(dict_vertices.values())[0] # el anterior, para despues enlazarlos
+
+            # cogemos desde la segunda hasta el final
             for u in list(dict_vertices.values())[1:]:
                 # calcular distancia y agregamos la arista al grafo 1
                 distancia = np.sqrt((v.coords[0] - u.coords[0])**2 + (v.coords[1] - u.coords[1])**2)
@@ -133,14 +155,14 @@ def ordenar_csv():
                     tiempo = distancia / velocidad(tipo_via) * 60
                     grafo2.agregar_arista(v, u,  {'distancia': distancia, 'calle': nombre_calle, 'num_calle':calle_act, 'velocidad': velocidad(tipo_via)}, tiempo)
                     grafo2.agregar_arista(u, v,  {'distancia': distancia, 'calle': nombre_calle, 'num_calle':calle_act, 'velocidad': velocidad(tipo_via)}, tiempo)
-                    
-                v = u 
+                 
+                v = u
         
             tipo_via = fila[3]
-            actualizar = True
+            calle_act = calle
             dict_vertices = {}
             dict_vertices[numero_calle] = vertices[coords]
-            nombre_calle = fila[5]
+            nombre_calle = fila[2]
 
         else:
             # en caso contrario segumos añadiendo vertices
@@ -155,10 +177,14 @@ def pasar_network_x(grafo, nombre):
     # en el grafo guardamos en cada vertice todas las aristas que pasan por el, concatenamos todas 
     # estas listas y hacemos un set para eliminar duplicados
     aristas = set([a for v in grafo.vertices.keys() for a in grafo.vertices[v]])
-    G.add_edges_from([(a.origen.num, a.destino.num, {'distancia': a.data['distancia'], 'calle': a.data['calle']}) for a in aristas])
+    G.add_edges_from([(a.origen.num, a.destino.num, {'distancia': a.data['distancia'], 'calle': a.data['calle'], 'numero_calle': a.data['num_calle']}) for a in aristas])
     pos = nx.get_node_attributes(G, 'coordenadas')
     plt.figure(figsize=(100,100))
-    nx.draw(G, pos=pos, with_labels=False, node_size=10)
+    # ponemos las labels a las aristas (con el numero de la calle)
+    nx.draw(G, pos=pos, with_labels=True, font_size=5, node_size=10)
+    # vamos a resaltar l
+    labels = nx.get_edge_attributes(G,'num_calle')
+    nx.draw_networkx_edge_labels(G, pos=pos, edge_labels=labels, font_size=5)
     # guardamos la figura
     plt.savefig(nombre)
 
