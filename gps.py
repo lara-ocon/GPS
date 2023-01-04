@@ -515,7 +515,11 @@ def encontrar_coordenadas_direccion_grafo(grafo, direccion):
     el vertice que este en esa calle y el numero mas cercano
     """
     calle, numero = direccion.split(',')
-    calle = calle.strip()
+    calle = calle.strip().lower()
+    # eliminamos las tildes
+    tildes = {'á':'a', 'é':'e', 'í':'i', 'ó':'o', 'ú':'u'}
+    for tile in tildes.keys():
+        calle = calle.replace(tile, tildes[tile])
     numero = int(numero.strip())
 
     vertice = encontrar_numero_mas_cercano(grafo, calle, numero)
