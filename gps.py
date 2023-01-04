@@ -402,7 +402,7 @@ def Menu(grafo1, grafo2, G):
                     print(f'{bcolors.BOLDRED}\nLo siento, no se ha encontrado una ruta entre  {bcolors.ENDC}{bcolors.CURSIVA}{origen_string} {bcolors.ENDC}{bcolors.BOLDRED} y  {bcolors.ENDC}{bcolors.CURSIVA}{destino_string}{bcolors.ENDC}')
                 else:
                     print(f'{bcolors.BOLDGREEN}\nRuta encontrada!\n{bcolors.ENDC}')
-                    instrucciones, instrucciones_sin_color = cargar_instrucciones_ruta(ruta, grafo)
+                    instrucciones, instrucciones_sin_color, dist_total, tiempo_total = cargar_instrucciones_ruta(ruta, grafo)
                     print(f'{bcolors.BOLDWHITE}1.{bcolors.ENDC} Mostrar instrucciones por pantalla')
                     print(f'{bcolors.BOLDWHITE}2.{bcolors.ENDC} Guardar instrucciones en un archivo\n')
                     opcion = 0
@@ -422,12 +422,18 @@ def Menu(grafo1, grafo2, G):
                             print(f'{bcolors.BOLDWHITE}\nInstrucciones de la ruta entre {bcolors.ENDC}{bcolors.CURSIVA}{origen_string}{bcolors.ENDC}{bcolors.BOLDWHITE} y {bcolors.ENDC}{bcolors.CURSIVA}{destino_string}:{bcolors.ENDC}\n')
                             for i in instrucciones:
                                 print(i)
+                            print()
+                            print(f'{bcolors.BOLDWHITE}\nDistancia total: {dist_total} metros{bcolors.ENDC}')
+                            print(f'{bcolors.BOLDWHITE}Tiempo total: {tiempo_total} segundos{bcolors.ENDC}\n')
                         else:
                             nombre_archivo = input(f'{bcolors.BOLDWHITE}¿Con qué nombre deseas el archivo?: {bcolors.ENDC}\n')
                             with open(f'{nombre_archivo}.txt', 'w') as f:
                                 f.write(f'Direcciones de la ruta entre {origen_string} y {destino_string}:\n')
                                 for i in instrucciones_sin_color:
                                     f.write(i + '\n')
+                                f.write('\n')
+                                f.write(f'\nDistancia total: {dist_total} metros\n')
+                                f.write(f'Tiempo total: {tiempo_total} segundos\n')
                             print(f'{bcolors.BOLDGREEN}\nArchivo guardado con éxito como {nombre_archivo}.txt !{bcolors.ENDC}\n')
                     
                     imprimir_mapa_ruta(ruta, G)
@@ -523,6 +529,8 @@ def cargar_instrucciones_ruta(ruta, grafo):
     instrucciones_sin_color = []
     i = 1
     actual = ruta[0]
+    dist_total = 0
+    tiempo_total = 0
     while i < len(ruta):
         # primero vemos que calle tienen en comun el vertice actual con el siguiente
         # y vamos acumulando la distancia de las aristas que recorremos hasta que los vertices
@@ -530,6 +538,8 @@ def cargar_instrucciones_ruta(ruta, grafo):
         arista = grafo.obtener_arista(actual, ruta[i])[0]
         calle = arista['calle'].strip()
         distancia = float(arista['distancia'])
+        dist_total += distancia
+        tiempo_total += distancia / float(arista['velocidad'])
         i += 1
         if i < len(ruta):
             # vemos cual es la siguiente calle
@@ -540,6 +550,8 @@ def cargar_instrucciones_ruta(ruta, grafo):
             # en caso de que la siguiente calle sea la misma que la actual, seguimos acumulando la distancia
             while (i < len(ruta) - 1) and (calle == calle2):
                 distancia += float(arista['distancia'])
+                dist_total += float(arista['distancia'])
+                tiempo_total += ((float(arista['distancia']) / 1000) / float(arista['velocidad'])) * 60 
                 calle = calle2
                 actual = ruta[i]
                 arista = grafo.obtener_arista(actual, ruta[i + 1])[0]
@@ -570,7 +582,7 @@ def cargar_instrucciones_ruta(ruta, grafo):
 
         num += 1
 
-    return instrucciones, instrucciones_sin_color
+    return instrucciones, instrucciones_sin_color, dist_total, tiempo_total
 
 
 def imprimir_mapa_ruta(ruta, G):
