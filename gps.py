@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import time, os, sys
 import regex as re
+import warnings
 
 # Inicializamos los grafos que vamos a usar
 G = nx.Graph()                              # Grafo de networkx
@@ -79,7 +80,7 @@ def velocidad(tipo):
         return 50
 
 
-def unificar_rotondas_1(rotonda, df):
+def unificar_rotondas(rotonda, df):
     """
     cogemos las coordenadas que componen la rotonda y las unimos en una unica
     coordenada que será la media de dichas coordenadas en el dataframe de cruces
@@ -87,16 +88,11 @@ def unificar_rotondas_1(rotonda, df):
     coords = (df[df['Codigo de vía tratado'] == rotonda]['Coordenada X (Guia Urbana) cm (cruce)'].mean(), df[df['Codigo de vía tratado'] == rotonda]['Coordenada Y (Guia Urbana) cm (cruce)'].mean())
     df.loc[df['Codigo de vía tratado'] == rotonda, 'Coordenada X (Guia Urbana) cm (cruce)'] = coords[0]
     df.loc[df['Codigo de vía tratado'] == rotonda, 'Coordenada Y (Guia Urbana) cm (cruce)'] = coords[1]
-    return df, coords
 
-def unificar_rotondas_2(rotonda, df):
-    """
-    cogemos las coordenadas que componen la rotonda y las unimos en una unica
-    coordenada que será la media de dichas coordenadas en el dataframe de direcciones
-    """
-    df.loc[df['Codigo de via'] == rotonda, 'Coordenada X (Guia Urbana) cm'] = df[df['Codigo de via'] == rotonda]['Coordenada X (Guia Urbana) cm'].mean()
-    df.loc[df['Codigo de via'] == rotonda, 'Coordenada Y (Guia Urbana) cm'] = df[df['Codigo de via'] == rotonda]['Coordenada Y (Guia Urbana) cm'].mean()
-    return df
+    df.loc[df['Codigo de via que cruza o enlaza'] == rotonda, 'Coordenada X (Guia Urbana) cm (cruce)'] = coords[0]
+    df.loc[df['Codigo de via que cruza o enlaza'] == rotonda, 'Coordenada Y (Guia Urbana) cm (cruce)'] = coords[1]
+
+    return df, coords
 
 
 def generar_grafos():  
@@ -114,28 +110,38 @@ def generar_grafos():
     cruces = cruces.sort_values(by=['Codigo de vía tratado','Codigo de via que cruza o enlaza'] )
     direcciones = direcciones.sort_values(by=['Codigo de via'] )
 
-    
+    direcciones = direcciones[direcciones['Coordenada X (Guia Urbana) cm'] != '000000-100']
+    direcciones['Numero'] = direcciones['Literal de numeracion'].str.replace('[a-zA-Z. ï¿½]', '')
+    direcciones['Numero'] = direcciones['Numero'].astype(int)
+    direcciones['Par'] = direcciones['Numero'] % 2 == 0
+    direcciones['Par'] = direcciones['Par'].astype(int)
+
+
     vertices = {}                                               # Diccionario de vertices: {tuple(x,y): object(Vertice))}
     calle_act = 127                                             # Numero de la calle actual que estamos procesando
     vel = velocidad(list(cruces.itertuples())[0][3])            # Velocidad de la calle actual que estamos procesando
     nombre_calle = list(cruces.itertuples())[0][2]              # Nombre completo de la calle actual que estamos procesando
     nombre_calle_acortado = list(cruces.itertuples())[0][5]     # Nombre de la calle actual acortado
     dict_vertices = {}                                          # Diccionario de todos los vertices en la calle actual que estamos procesando, {numero: object(Vertice)}
-    num_vertice = 0                                             # A cada vértice del grafo le asignaremos un numero   
+    num_vertice = 0                                             # A cada vértice del grafo le asignaremos un numero  
+
+    rotondas_procesadas = []                                    # Lista de rotondas que ya hemos procesado
 
     for fila in cruces.itertuples():
 
         calle = fila[1]
-        coords = (fila[11], fila[12])  
+        coords = (fila[11], fila[12])
 
-        if 'GLORIETA' in fila[3]:
-            # si se trata de una rotonda, unificamos en los df de cruces y direcciones
-            # todas las coordenadas de dicha rotonda como una sola coordenada
-            cruces, coords = unificar_rotondas_1(calle, cruces)
-            direcciones = unificar_rotondas_2(calle, direcciones)
+        if 'GLORIETA' in fila[3] or 'PLAZA' in fila[3]:
+            if fila[2].strip() not in rotondas_procesadas:
+                rotondas_procesadas.append(fila[2].strip())
+                # si se trata de una rotonda, unificamos en los df de cruces y direcciones
+                # todas las coordenadas de dicha rotonda como una sola coordenada
+                cruces, coords = unificar_rotondas(calle, cruces)
             
     
         if coords not in vertices:
+
             # Si la coordenada no esta en el diccionario de vertices, la añadimos
             # considerandola como un nuevo vertice al grafo
             v = Vertice(coords, num_vertice)
@@ -149,12 +155,16 @@ def generar_grafos():
 
             num_vertice += 1
 
-
         # Ahora buscamos por cercania en coordenadas, el numero de calle correspondiente
         # a la coordenada actual en el df de direcciones
         menor_dist_calle = np.inf
         numero_calle = 0
         df_temporal = direcciones.loc[direcciones['Codigo de via'] == calle]
+
+        # nos quedamos solo con pares/impares, del que tengamos mas:
+        n_tot = len(df_temporal)
+        n_pares = len(df_temporal[df_temporal['Par'] == 0])
+        df_temporal = df_temporal[df_temporal['Par'] == 0] if n_pares > (n_tot-n_pares) else df_temporal[df_temporal['Par'] == 1]
 
         for fila2 in df_temporal.itertuples():
     
@@ -166,14 +176,10 @@ def generar_grafos():
             except:
                 pass
 
-            if menor_dist_calle < 1500:
-                # Si la distancia es menor a 1500, consideramos que es el numero correcto
-                break
 
         # Guardamos dentro del diccionario de calles de cada vertice, que numero de calle es el
         # que le corresponde a esa coordenada en esa calle
         vertices[coords].calles[calle] = numero_calle
-
         
         """
         GENERACIÓN DE ARISTAS:
@@ -192,23 +198,18 @@ def generar_grafos():
 
             # Comenzamos a enlazar los vertices de la calle actual
             for u in list(dict_vertices.values())[1:]:
+
                 # Calculamos la distancia entre los vertices
                 distancia = np.sqrt((v.coords[0] - u.coords[0])**2 + (v.coords[1] - u.coords[1])**2)
                 if distancia < 600000 and v != u:
                     grafo1.agregar_arista(v,u, {'distancia': distancia, 
                                                 'calle': nombre_calle, 'num_calle':calle_act, 'nombre_acortado': nombre_calle_acortado,
                                                 'velocidad': vel} ,distancia)
-                    grafo1.agregar_arista(u,v, {'distancia': distancia, 
-                                                'calle': nombre_calle, 'num_calle':calle_act, 'nombre_acortado': nombre_calle_acortado,
-                                                'velocidad': vel}, distancia)
                     
                     # dividimos la distancia entre la velocidad de la calle y lo multiplicamos por 60 para obtener los minutos
                     # agregamos la arista al grafo 2
                     tiempo = (distancia / vel) * 60
                     grafo2.agregar_arista(v, u,  {'distancia': distancia, 
-                                                  'calle': nombre_calle, 'num_calle':calle_act, 'nombre_acortado': nombre_calle_acortado,
-                                                  'velocidad': vel}, tiempo)
-                    grafo2.agregar_arista(u, v,  {'distancia': distancia, 
                                                   'calle': nombre_calle, 'num_calle':calle_act, 'nombre_acortado': nombre_calle_acortado,
                                                   'velocidad': vel}, tiempo)
 
@@ -234,6 +235,12 @@ def generar_grafos():
         else:
             # en caso contrario segumos añadiendo vertices
             #  a la calle actual
+            if numero_calle in dict_vertices:
+                # vemos si esta lo suficientemente lejos del otro para considerarlo un nuevo vertice
+                dist = np.sqrt((vertices[coords].coords[0] - dict_vertices[numero_calle].coords[0])**2 + (vertices[coords].coords[1] - dict_vertices[numero_calle].coords[1])**2)
+                if dist > 1000:
+                    numero_calle += np.random.randint(1, 100) / 1000
+                    
             dict_vertices[numero_calle] = vertices[coords]
 
     return grafo1, grafo2, G
@@ -424,7 +431,7 @@ def Menu(grafo1, grafo2, G):
                                 print(i)
                             print()
                             print(f'{bcolors.BOLDWHITE}\nDistancia total: {dist_total} metros{bcolors.ENDC}')
-                            print(f'{bcolors.BOLDWHITE}Tiempo total: {tiempo_total} segundos{bcolors.ENDC}\n')
+                            print(f'{bcolors.BOLDWHITE}Tiempo total: {tiempo_total} {bcolors.ENDC}\n')
                         else:
                             nombre_archivo = input(f'{bcolors.BOLDWHITE}¿Con qué nombre deseas el archivo?: {bcolors.ENDC}\n')
                             with open(f'{nombre_archivo}.txt', 'w') as f:
@@ -433,7 +440,7 @@ def Menu(grafo1, grafo2, G):
                                     f.write(i + '\n')
                                 f.write('\n')
                                 f.write(f'\nDistancia total: {dist_total} metros\n')
-                                f.write(f'Tiempo total: {tiempo_total} segundos\n')
+                                f.write(f'Tiempo total: {tiempo_total} \n')
                             print(f'{bcolors.BOLDGREEN}\nArchivo guardado con éxito como {nombre_archivo}.txt !{bcolors.ENDC}\n')
                     
                     imprimir_mapa_ruta(ruta, G)
@@ -539,7 +546,7 @@ def cargar_instrucciones_ruta(ruta, grafo):
         calle = arista['calle'].strip()
         distancia = float(arista['distancia'])
         dist_total += distancia
-        tiempo_total += distancia / float(arista['velocidad'])
+        tiempo_total += (distancia / 100) / (float(arista['velocidad']) * 1000 / 60)
         i += 1
         if i < len(ruta):
             # vemos cual es la siguiente calle
@@ -551,7 +558,7 @@ def cargar_instrucciones_ruta(ruta, grafo):
             while (i < len(ruta) - 1) and (calle == calle2):
                 distancia += float(arista['distancia'])
                 dist_total += float(arista['distancia'])
-                tiempo_total += ((float(arista['distancia']) / 1000) / float(arista['velocidad'])) * 60 
+                tiempo_total += ((float(arista['distancia']) / 100) / (float(arista['velocidad']) * 1000 / 60))
                 calle = calle2
                 actual = ruta[i]
                 arista = grafo.obtener_arista(actual, ruta[i + 1])[0]
@@ -581,8 +588,27 @@ def cargar_instrucciones_ruta(ruta, grafo):
                 instrucciones_sin_color.append(f'{num}) Continue por {calle} durante {distancia / 100} metros y gire a la derecha hacia {calle2}')
 
         num += 1
+    
+    tiempo_total = pasar_a_horas(tiempo_total)
 
-    return instrucciones, instrucciones_sin_color, dist_total, tiempo_total
+    return instrucciones, instrucciones_sin_color, dist_total / 100, tiempo_total
+
+
+def pasar_a_horas(tiempo):
+    # quitamos los decimales (los segundos)
+    tiempo = int(tiempo)
+
+    # recibimos tiempo en minutos y lo pasamos a horas y minutos
+    horas = tiempo // 60
+    minutos = tiempo % 60
+
+    if horas > 0:
+        if minutos > 0:
+            return f'{horas} horas y {minutos} minutos'
+        else:
+            return f'{horas} horas'
+    else:
+        return f'{minutos} minutos'
 
 
 def imprimir_mapa_ruta(ruta, G):
@@ -604,7 +630,7 @@ def imprimir_mapa_ruta(ruta, G):
         G_ruta.add_edge(ruta[i].num, ruta[i+1].num, calle=grafo1.obtener_arista(ruta[i], ruta[i+1])[0]['calle'])
     # pintamos el grafo sobre la figura
     pos = nx.get_node_attributes(G_ruta, 'coordenadas')
-    nx.draw(G_ruta, pos, with_labels=False, node_size=20, width=10, node_color='red', edge_color='red')
+    nx.draw(G_ruta, pos, with_labels=False, node_size=20, width=5, node_color='red', edge_color='red')
     
     nombre_archivo = input(f'\n{bcolors.BOLDWHITE}\nIntroduce el nombre del archivo donde se guardara el mapa: {bcolors.ENDC}\n')
     plt.savefig(f'{nombre_archivo}.png')
@@ -613,5 +639,9 @@ def imprimir_mapa_ruta(ruta, G):
 
 
 if __name__ == "__main__":
+
+    warnings.filterwarnings("ignore")
+
     grafo1, grafo2, G = iniciar()
+    
     Menu(grafo1, grafo2, G)
