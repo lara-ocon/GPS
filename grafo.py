@@ -272,8 +272,7 @@ class Grafo:
 
 
     def camino_minimo(self, origen:object, destino:object) -> List[object]:
-        print('Entramos a camino minimo')
-        print('Vamos a ir desde las coordenadas', origen.coords, 'hasta las coordenadas', destino.coords)
+        
         distancia = dict()
         padre = dict()
         visitado = dict()
@@ -292,7 +291,6 @@ class Grafo:
             d, u = heapq.nsmallest(1, heap)[0]
                 
             if u == destino:
-                print('Hemos llegado al destino')
                 C = [destino]
                 while padre[C[-1]] != None:
                     C.append(padre[C[-1]])

@@ -1,3 +1,7 @@
+# Practica 3: GPS - librería gps.py - Matematica Discreta
+# Autores: Lucía Prado Fernandez-Vega y Lara Ocón Madrid
+
+# Importamos las librerias necesarias
 import grafo as gf
 import pandas as pd
 import numpy as np
@@ -6,10 +10,35 @@ import networkx as nx
 import time, os, sys
 import regex as re
 
-# creamos una clase vertice que dado el atributo coordenadas, 
-# si tiene las mismas coordenadas considere que es el mismo objeto
-# es decir que tenga el mismo hash
+# Inicializamos los grafos que vamos a usar
+G = nx.Graph()                              # Grafo de networkx
+grafo1 = gf.Grafo(False)                    # Grafo del TAD grafo.py (pesos son distancias)
+grafo2 = gf.Grafo(False)                    # Grafo del TAD grafo.py (pesos son tiempos)
+
+
+# Definimos los colores que vamos a emplear al imprimir por pantalla
+class bcolors:
+    BOLDGREEN = '\033[1m\033[92m'
+    BOLDRED = '\033[1m\033[91m'
+    BOLDYELLOW = '\033[1m\033[93m'
+    BOLDWHITE = '\033[1m\033[97m'
+    BOLDBLUE = '\033[1m\033[94m'
+    FONDOBLANCO = '\033[107m'
+    CURSIVA = '\033[3m'
+    CURSIVA_AZUL = '\033[3m\033[94m'
+    CURSIVA_AMARILLO = '\033[3m\033[93m'
+    ENDC = '\033[0m'
+
+
 class Vertice:
+    """
+    Clase Vertice
+    Atibutos:
+        - calles: diccionario de calles que salen de este vertice: {calle: numero}
+        - coords: coordenadas del vertice (x,y)
+        - num: numero del vertice (lo usaremos como identificador del vertice en los grafos)
+    """
+
     def __init__(self, coords, num):
         self.calles = {}                    # Diccionario de calles: {calle: numero}
         self.coords = coords
@@ -19,8 +48,7 @@ class Vertice:
         return hash(self.coords)
 
     def __eq__(self, other):
-        # esto lo que hace es que si dos vertices tienen las mismas coordenadas
-        # se consideran iguales y por tanto tienen el mismo hash
+        # definimos la igualdad de vertices como la igualdad de sus coordenadas
         try:
             eq = (self.coords == other.coords)
         except:
@@ -31,16 +59,20 @@ class Vertice:
     def __repr__(self):
         return str(self.num)
 
-G = nx.Graph()
 
-grafo1 = gf.Grafo(False)                    # Grafo donde los pesos son las distancias
-grafo2 = gf.Grafo(False)                    # Grafo donde los pesos son los tiempos
-VELOCIDADES = {
+"""
+FASE 1: Funciones para generar los grafos
+"""
+
+def velocidad(tipo):
+    """
+    Funcion que nos devuelve la velocidad maxima permitida en una arista en funcion
+    del tipo de vía.
+    """
+    VELOCIDADES = {
         'AUTOVIA': 100,'AVENIDA': 90,'CARRETERA': 70,'CALLEJON': 30,'CAMINO': 30,
         'ESTACION DE METRO': 20, 'PASADIZO': 20, 'PLAZUELA': 20, 'COLONIA': 20
         }
-
-def velocidad(tipo):
     if tipo in VELOCIDADES.keys():
         return VELOCIDADES[tipo]
     else:
@@ -48,27 +80,34 @@ def velocidad(tipo):
 
 
 def unificar_rotondas_1(rotonda, df):
-    # cogemos las coordenadas que componen la rotonda y las unimos en una unica
-    # coordenada que será la media
+    """
+    cogemos las coordenadas que componen la rotonda y las unimos en una unica
+    coordenada que será la media de dichas coordenadas en el dataframe de cruces
+    """
     coords = (df[df['Codigo de vía tratado'] == rotonda]['Coordenada X (Guia Urbana) cm (cruce)'].mean(), df[df['Codigo de vía tratado'] == rotonda]['Coordenada Y (Guia Urbana) cm (cruce)'].mean())
     df.loc[df['Codigo de vía tratado'] == rotonda, 'Coordenada X (Guia Urbana) cm (cruce)'] = coords[0]
     df.loc[df['Codigo de vía tratado'] == rotonda, 'Coordenada Y (Guia Urbana) cm (cruce)'] = coords[1]
     return df, coords
 
 def unificar_rotondas_2(rotonda, df):
-    # cogemos las coordenadas que componen la rotonda y las unimos en una unica
-    # coordenada que será la media
+    """
+    cogemos las coordenadas que componen la rotonda y las unimos en una unica
+    coordenada que será la media de dichas coordenadas en el dataframe de direcciones
+    """
     df.loc[df['Codigo de via'] == rotonda, 'Coordenada X (Guia Urbana) cm'] = df[df['Codigo de via'] == rotonda]['Coordenada X (Guia Urbana) cm'].mean()
     df.loc[df['Codigo de via'] == rotonda, 'Coordenada Y (Guia Urbana) cm'] = df[df['Codigo de via'] == rotonda]['Coordenada Y (Guia Urbana) cm'].mean()
     return df
 
 
-def ordenar_csv():  
+def generar_grafos():  
 
     """
-    ORDENAR CSV:
-        - Leer cruces y direcciones y ordenar por numero de via
-        - Para cada fila de cruces, su numero será la coordenada mas cercana del de direcciones
+    ORDENAR CSV y GENERAR GRAFOS:
+        - Leer cruces y direcciones y ordenar por numero de via (es decir numero de calle).
+        - Procesamos cada fila de cruces considerandolo como informacion de un vértice.
+        - Para cada fila de cruces, su numero de calle nos lo dará la fila con la coordenada mas cercana 
+        en el df de direcciones que pertenezca a la misma calle.
+    
     """
     cruces = pd.read_csv('cruces.csv', sep=';', encoding='latin-1')
     direcciones = pd.read_csv('direcciones.csv', sep=';', encoding='latin-1', low_memory=False)
@@ -76,44 +115,43 @@ def ordenar_csv():
     direcciones = direcciones.sort_values(by=['Codigo de via'] )
 
     
-    vertices = {}                           # Diccionario de vertices: {coordenadas: objeto vertice (info)}
-    calle_act = 127                         # Calle actual siendo procesada
-    tipo_via = list(cruces.itertuples())[0][3]    # Tipo de via de la calle actual
-    nombre_calle = list(cruces.itertuples())[0][5]    # Nombre de la calle actual
-    dict_vertices = {}
-    actualizar = False
+    vertices = {}                                               # Diccionario de vertices: {tuple(x,y): object(Vertice))}
+    calle_act = 127                                             # Numero de la calle actual que estamos procesando
+    vel = velocidad(list(cruces.itertuples())[0][3])            # Velocidad de la calle actual que estamos procesando
+    nombre_calle = list(cruces.itertuples())[0][2]              # Nombre completo de la calle actual que estamos procesando
+    nombre_calle_acortado = list(cruces.itertuples())[0][5]     # Nombre de la calle actual acortado
+    dict_vertices = {}                                          # Diccionario de todos los vertices en la calle actual que estamos procesando, {numero: object(Vertice)}
+    num_vertice = 0                                             # A cada vértice del grafo le asignaremos un numero   
 
-    """
-    GENERAR GRAFOS:
-        - Procesar el fichero por filas procesando cada calle
-        - Si las coordenadas de dicha fila no se encuntran en el diccionario
-        de vértices, añadimos un nuevo vértice para estas
-        - Empleamos el fichero de direcciones para asignar el número de la 
-        coordenada más cercana
-    """
-    num_vertice = 0
     for fila in cruces.itertuples():
 
         calle = fila[1]
         coords = (fila[11], fila[12])  
 
         if 'GLORIETA' in fila[3]:
-            # unificamos las coordenadas de la rotonda
+            # si se trata de una rotonda, unificamos en los df de cruces y direcciones
+            # todas las coordenadas de dicha rotonda como una sola coordenada
             cruces, coords = unificar_rotondas_1(calle, cruces)
             direcciones = unificar_rotondas_2(calle, direcciones)
             
     
         if coords not in vertices:
-            # agrgamos el vertice
+            # Si la coordenada no esta en el diccionario de vertices, la añadimos
+            # considerandola como un nuevo vertice al grafo
             v = Vertice(coords, num_vertice)
+
+            # la agregamos a todas las estructuras de datos que necesitamos
+            # (diccionario de vertices, grafo de networkx, grafo1 y grafo2 del TAD grafo)
             vertices[coords] = v
             grafo1.agregar_vertice(v)
             grafo2.agregar_vertice(v)
-            # añadimos al grafo de networkx el nodo y sus coordenadas
             G.add_nodes_from([(v.num, {'coordenadas': v.coords})])
+
             num_vertice += 1
 
-        # Asignar nº de coordenada más cercana
+
+        # Ahora buscamos por cercania en coordenadas, el numero de calle correspondiente
+        # a la coordenada actual en el df de direcciones
         menor_dist_calle = np.inf
         numero_calle = 0
         df_temporal = direcciones.loc[direcciones['Codigo de via'] == calle]
@@ -129,51 +167,69 @@ def ordenar_csv():
                 pass
 
             if menor_dist_calle < 1500:
-                #print('menor distancia', menor_dist_calle)
-                # si esta muy cerca le asigno esos numeros
+                # Si la distancia es menor a 1500, consideramos que es el numero correcto
                 break
 
-        # añadimos el numero de calle a la lista de calles del vertice
+        # Guardamos dentro del diccionario de calles de cada vertice, que numero de calle es el
+        # que le corresponde a esa coordenada en esa calle
         vertices[coords].calles[calle] = numero_calle
 
+        
         """
-        ORDENAR POR NÚMERO:
-        - Al pasar a la siguiente calle dentro del fichero de cruces,
-        se deben ordenar los vértices de la calle por clave
-        - Una vez ordenadas, generar las aristas
+        GENERACIÓN DE ARISTAS:
+        Dado que tenemos ordenados los df por calles, cuando cambie la calle actual, ordenamos todos
+        los vertices que hemos recorrido por su numero dentro de la calle y enlazamos cada dos vertices 
+        consecutivos con una arista.
+        Esto lo haremos cada vez que pasemos a la siguiente calle, o cuando lleguemos al ultimo 
+        cruce del df de cruces.
         """
-        # si estamos en el ultimo vertice del csv o cambiamos de calle
-        # agregamos las aristas de esa calle
         if (fila[0] == len(cruces) - 1) or (calle_act != calle):
-    
+            
+            # Ordenamos los vertices de la calle actual por su numero de calle y guardamos el 
+            # primer vertice para comenzar a enlazarlos dos a dos
             dict_vertices = dict(sorted(dict_vertices.items(), key=lambda item: item[0]))
-            v = list(dict_vertices.values())[0] # el anterior, para despues enlazarlos
+            v = list(dict_vertices.values())[0]
 
-            # cogemos desde la segunda hasta el final
+            # Comenzamos a enlazar los vertices de la calle actual
             for u in list(dict_vertices.values())[1:]:
-                # calcular distancia y agregamos la arista al grafo 1
+                # Calculamos la distancia entre los vertices
                 distancia = np.sqrt((v.coords[0] - u.coords[0])**2 + (v.coords[1] - u.coords[1])**2)
                 if distancia < 600000 and v != u:
-                    grafo1.agregar_arista(v,u, {'distancia': distancia, 'calle': nombre_calle, 'num_calle':calle_act, 'velocidad': velocidad(tipo_via)} ,distancia)
-                    grafo1.agregar_arista(u,v, {'distancia': distancia, 'calle': nombre_calle, 'num_calle':calle_act, 'velocidad': velocidad(tipo_via)}, distancia)
+                    grafo1.agregar_arista(v,u, {'distancia': distancia, 
+                                                'calle': nombre_calle, 'num_calle':calle_act, 'nombre_acortado': nombre_calle_acortado,
+                                                'velocidad': vel} ,distancia)
+                    grafo1.agregar_arista(u,v, {'distancia': distancia, 
+                                                'calle': nombre_calle, 'num_calle':calle_act, 'nombre_acortado': nombre_calle_acortado,
+                                                'velocidad': vel}, distancia)
                     
                     # dividimos la distancia entre la velocidad de la calle y lo multiplicamos por 60 para obtener los minutos
                     # agregamos la arista al grafo 2
-                    tiempo = distancia / velocidad(tipo_via) * 60
-                    grafo2.agregar_arista(v, u,  {'distancia': distancia, 'calle': nombre_calle, 'num_calle':calle_act, 'velocidad': velocidad(tipo_via)}, tiempo)
-                    grafo2.agregar_arista(u, v,  {'distancia': distancia, 'calle': nombre_calle, 'num_calle':calle_act, 'velocidad': velocidad(tipo_via)}, tiempo)
+                    tiempo = (distancia / vel) * 60
+                    grafo2.agregar_arista(v, u,  {'distancia': distancia, 
+                                                  'calle': nombre_calle, 'num_calle':calle_act, 'nombre_acortado': nombre_calle_acortado,
+                                                  'velocidad': vel}, tiempo)
+                    grafo2.agregar_arista(u, v,  {'distancia': distancia, 
+                                                  'calle': nombre_calle, 'num_calle':calle_act, 'nombre_acortado': nombre_calle_acortado,
+                                                  'velocidad': vel}, tiempo)
 
                     # añadimos la arista al grafo de networkx
-                    G.add_edges_from([(v.num, u.num, {'distancia': distancia, 'calle': nombre_calle, 'num_calle':calle_act, 'velocidad': velocidad(tipo_via)})])
-                    G.add_edges_from([(u.num, v.num, {'distancia': distancia, 'calle': nombre_calle, 'num_calle':calle_act, 'velocidad': velocidad(tipo_via)})])
+                    G.add_edges_from([(v.num, u.num, {'distancia': distancia, 
+                                                      'calle': nombre_calle, 'num_calle':calle_act, 'nombre_acortado': nombre_calle_acortado,
+                                                      'velocidad': vel})])
+                    G.add_edges_from([(u.num, v.num, {'distancia': distancia, 
+                                                      'calle': nombre_calle, 'num_calle':calle_act, 'nombre_acortado': nombre_calle_acortado,
+                                                      'velocidad': vel})])
                  
                 v = u
-        
-            tipo_via = fila[3]
+
+            # Hemos terminado con la calle anterior, ahora comenzamos con la nueva
+            # guardamos toda su informacion actualizando las variables
+            vel = velocidad(fila[3].strip())
             calle_act = calle
             dict_vertices = {}
             dict_vertices[numero_calle] = vertices[coords]
             nombre_calle = fila[2]
+            nombre_calle_acortado = fila[5]
 
         else:
             # en caso contrario segumos añadiendo vertices
@@ -182,38 +238,207 @@ def ordenar_csv():
 
     return grafo1, grafo2, G
 
-def pasar_network_x(grafo, nombre):
-    G = nx.Graph()
-    G.add_nodes_from([(v.num, {'coordenadas': v.coords}) for v in list(grafo.vertices.keys())])
-    # en el grafo guardamos en cada vertice todas las aristas que pasan por el, concatenamos todas 
-    # estas listas y hacemos un set para eliminar duplicados
-    aristas = set([a for v in grafo.vertices.keys() for a in grafo.vertices[v]])
-    G.add_edges_from([(a.origen.num, a.destino.num, {'distancia': a.data['distancia'], 'calle': a.data['calle'], 'numero_calle': a.data['num_calle']}) for a in aristas])
-    pos = nx.get_node_attributes(G, 'coordenadas')
-    plt.figure(figsize=(100,100))
-    # ponemos las labels a las aristas (con el numero de la calle)
-    nx.draw(G, pos=pos, with_labels=True, font_size=5, node_size=10)
-    # vamos a resaltar l
-    labels = nx.get_edge_attributes(G,'num_calle')
-    nx.draw_networkx_edge_labels(G, pos=pos, edge_labels=labels, font_size=5)
-    # guardamos la figura
-    plt.savefig(nombre)
-
 
 def iniciar():
-    # leemos los csv, los ordenamos y creamos el grafo
-    print('\nCargando grafos...')
+    """
+    Funcion que lee los csv, los ordena por numero de calle y genera los grafos.
+    """
+    print(f'\n{bcolors.BOLDWHITE}Cargando grafos...{bcolors.ENDC}')
     i = time.time()
-    grafo1, grafo2, G = ordenar_csv()
+    grafo1, grafo2, G = generar_grafos()
     f = time.time()
-    print(f'Grafos cargados correctamente en {f-i} secs\n')
+    print(f'{bcolors.BOLDGREEN}Grafos cargados correctamente en {f-i} secs.{bcolors.ENDC}\n')
     return grafo1, grafo2, G
 
 
+"""
+FASE 2: Fase de generacion de rutas
+"""
+
+def Menu(grafo1, grafo2, G):
+    """
+    Funcion que muestra el menu principal del programa. Primero muestra la bienvenida y pregunta
+    al usuario que inserte la direccion de origen y destino, y devuelve la mejor ruta en base a sus 
+    preferencias (tiempo o distancia), hasta que el usuario introduzca un origen/destino vacíos, 
+    o presione Ctrl+C para salir.
+    """
+    
+    print(f'\n{bcolors.FONDOBLANCO}                 BIENVENIDO AL GPS BROSKI                  {bcolors.ENDC}\n')
+
+    salir = False
+    while not salir:
+        print(f'{bcolors.BOLDWHITE}Introduce el origen y destino para calcular la ruta más corta')
+        print(f'{bcolors.BOLDWHITE}1.{bcolors.ENDC} Introducir direccion')
+        print(f'{bcolors.BOLDWHITE}2.{bcolors.ENDC} Introducir coordenadas en cm')
+        
+        opcion_invalida = True
+        while opcion_invalida:
+            try:
+                opcion = int(input(f'Opcion: '))
+                if opcion in [1,2]:
+                    opcion_invalida = False
+                else:
+                    print(f'{bcolors.BOLDRED}Opción invalida, vuelve a intentarlo...{bcolors.ENDC}')
+            except KeyboardInterrupt:
+                print(f'{bcolors.BOLDRED}\nHas pulsado Ctrl+C, saliendo...{bcolors.ENDC}')
+                salir = True
+                opcion_invalida = False
+            except:
+                print(f'{bcolors.BOLDRED}Opción invalida, vuelve a intentarlo...{bcolors.ENDC}')
+    
+        if opcion == 1:
+            print(f'\n{bcolors.BOLDWHITE}Introduce la direccion separando el nombre de la vía y el número con una coma {bcolors.ENDC}\n(ejemplo: {bcolors.CURSIVA}calle del conde de peñalver, 3) {bcolors.ENDC}')
+            
+            # 1) Preguntamos por el origen
+            origen_valido = False
+            while not salir and not origen_valido:
+                try:
+                    origen_string = input(f'Origen: ').strip()
+
+                    if origen_string == '':
+                        salir = True
+                    else:
+                        origen = encontrar_coordenadas_direccion_grafo(grafo1, origen_string)
+                        if origen == None:
+                            print(f'{bcolors.BOLDRED}Direccion no encontrada, vuelve a intentarlo{bcolors.ENDC}')
+                        else:
+                            origen_valido = True
+                except KeyboardInterrupt:
+                    print(f'{bcolors.BOLDRED}\nHas pulsado Ctrl+C, saliendo...{bcolors.ENDC}')
+                    salir = True
+                except:
+                    print(f'{bcolors.BOLDRED}Direccion no encontrada, vuelve a intentarlo{bcolors.ENDC}')
+
+            # 2) Preguntamos por el destino
+            destino_valido = False
+            while not salir and not destino_valido:
+                try:
+                    destino_string = input('Destino: ').strip()
+                    
+                    if destino_string == '':
+                        salir = True
+                    else:
+                        destino = encontrar_coordenadas_direccion_grafo(grafo1, destino_string)
+                        if destino == None:
+                            print('Direccion no encontrada, vuelve a intentarlo')
+                        else:
+                            destino_valido = True
+                except KeyboardInterrupt:
+                    print('Saliendo...')
+                    salir = True
+                except:
+                    print('Direccion no encontrada, vuelve a intentarlo')
+
+        elif opcion == 2:
+            # coordenadas en cm
+            # 1) Preguntamos por el origen
+            origen_valido = False
+            while not salir and not origen_valido:
+                try:
+                    origen_string = input(f'Origen: ').strip()
+
+                    if origen_string == '':
+                        salir = True
+                    else:
+                        origen = [float(i) for i in origen_string.split(',')]
+                        if len(origen) != 2:
+                            raise ValueError
+                        origen = encontrar_coordenadas_cm_grafo(grafo2, origen)
+                        origen_valido = True
+                except KeyboardInterrupt:
+                    print(f'{bcolors.BOLDRED}\nHas pulsado Ctrl+C, saliendo...{bcolors.ENDC}')
+                    salir = True
+                except:
+                    print(f'{bcolors.BOLDRED}Coordenadas invalidas, vuelve a intentarlo{bcolors.ENDC}')
+
+            # 2) Preguntamos por el destino
+            destino_valido = False
+            while not salir:
+                try:
+                    destino_string = input(f'Destino: ').strip()
+
+                    if destino_string == '':
+                        salir = True
+                    else:
+                        destino = [float(i) for i in destino_string.split(',')]
+                        if len(destino) != 2:
+                            raise ValueError
+                        destino = encontrar_coordenadas_cm_grafo(grafo2, destino)
+                        destino_valido = True
+                except KeyboardInterrupt:
+                    print(f'{bcolors.BOLDRED}\nHas pulsado Ctrl+C, saliendo...{bcolors.ENDC}')
+                    salir = True
+                except:
+                    print(f'{bcolors.BOLDRED}Coordenadas invalidas, vuelve a intentarlo{bcolors.ENDC}')
+        
+        if not salir:
+            # calculamos la ruta mas corta, primero preguntamos si prefieren distancia o tiempo
+            print(f'\n{bcolors.BOLDWHITE}¿Quieres calcular la ruta más corta en distancia o más rápida en tiempo?{bcolors.ENDC}')
+            print(f'{bcolors.BOLDWHITE}1.{bcolors.ENDC} Más corta')
+            print(f'{bcolors.BOLDWHITE}2.{bcolors.ENDC} Más rápida')
+            opcion = 0
+            while opcion not in [1, 2]:
+                try:
+                    opcion = int(input(f'{bcolors.BOLDWHITE}Opcion: {bcolors.ENDC}'))
+                    if opcion not in [1, 2]:
+                        raise ValueError
+                except ValueError:
+                    print(f'{bcolors.BOLDRED}Opcion invalida, vuelve a intentarlo{bcolors.ENDC}')
+                except KeyboardInterrupt:
+                    salir = True
+                    break
+
+            if not salir:
+                # Escogemos el grafo que vamos a usar en funcion de las preferencias 
+                # del usario (distancia o tiempo)
+                if opcion == 1:
+                    grafo = grafo1
+                else:
+                    grafo = grafo2
+
+                # Calculamos la ruta mas corta
+                ruta = grafo.camino_minimo(origen, destino)
+                if ruta == None:
+                    print(f'{bcolors.BOLDRED}\nLo siento, no se ha encontrado una ruta entre  {bcolors.ENDC}{bcolors.CURSIVA}{origen_string} {bcolors.ENDC}{bcolors.BOLDRED} y  {bcolors.ENDC}{bcolors.CURSIVA}{destino_string}{bcolors.ENDC}')
+                else:
+                    print(f'{bcolors.BOLDGREEN}\nRuta encontrada!\n{bcolors.ENDC}')
+                    instrucciones, instrucciones_sin_color = cargar_instrucciones_ruta(ruta, grafo)
+                    print(f'{bcolors.BOLDWHITE}1.{bcolors.ENDC} Mostrar instrucciones por pantalla')
+                    print(f'{bcolors.BOLDWHITE}2.{bcolors.ENDC} Guardar instrucciones en un archivo\n')
+                    opcion = 0
+                    while opcion not in [1, 2]:
+                        try:
+                            opcion = int(input(f'{bcolors.BOLDWHITE}Opcion: {bcolors.ENDC}'))
+                            if opcion not in [1, 2]:
+                                raise ValueError
+                        except ValueError:
+                            print(f'{bcolors.BOLDRED}Opcion invalida, vuelve a intentarlo{bcolors.ENDC}')
+                        except KeyboardInterrupt:
+                            salir = True
+                            break
+                    
+                    if not salir:
+                        if opcion == 1:
+                            print(f'{bcolors.BOLDWHITE}\nInstrucciones de la ruta entre {bcolors.ENDC}{bcolors.CURSIVA}{origen_string}{bcolors.ENDC}{bcolors.BOLDWHITE} y {bcolors.ENDC}{bcolors.CURSIVA}{destino_string}:{bcolors.ENDC}\n')
+                            for i in instrucciones:
+                                print(i)
+                        else:
+                            nombre_archivo = input(f'{bcolors.BOLDWHITE}¿Con qué nombre deseas el archivo?: {bcolors.ENDC}\n')
+                            with open(f'{nombre_archivo}.txt', 'w') as f:
+                                f.write(f'Direcciones de la ruta entre {origen_string} y {destino_string}:\n')
+                                for i in instrucciones_sin_color:
+                                    f.write(i + '\n')
+                            print(f'{bcolors.BOLDGREEN}\nArchivo guardado con éxito como {nombre_archivo}.txt !{bcolors.ENDC}\n')
+                    
+                    imprimir_mapa_ruta(ruta, G)
+
+
 def encontrar_coordenadas_cm_grafo(grafo, coordenadas):
-    # buscamos las coordenadas mas cercanas de nuestro grafo a las insertadas
-    # para ello calculamos la distancia de cada vertice a las coordenadas
-    # y nos quedamos con el minimo
+    """
+    buscamos las coordenadas mas cercanas de nuestro grafo a las insertadas
+    para ello calculamos la distancia de cada vertice a las coordenadas
+    y nos quedamos con la minima
+    """
     minimo = np.inf
     for v in grafo.vertices.keys():
         distancia = np.sqrt((v.coords[0] - coordenadas[0])**2 + (v.coords[1] - coordenadas[1])**2)
@@ -223,44 +448,79 @@ def encontrar_coordenadas_cm_grafo(grafo, coordenadas):
     return vertice
 
 
-
 def encontrar_numero_mas_cercano(grafo, calle, numero):
-    # buscamos en las aristas de nuestro grafo el nombre de la calle, y nos guardamos
-    # el vertice origen/destino con el numero mas cercano
+    """
+    Buscamos dentro de nuestro grafo el vertice que mas se parezca a la direccion que nos han introducido. 
+    Para ello, guardamos las las aristas en una lista para ir recorriendolas una a una y quedarnos con ellas
+    cuyo nombre se parezca al nombre de la calle que nos han introducido. Para cada calle que sea
+    parecida, nos quedamos con el vertice que tenga el numero mas cercano al que nos han introducido.
+    """
     aristas = [a for v in grafo.vertices.keys() for a in grafo.vertices[v]]
-    mas_cercano = None
-    dist_mas_cercano = np.inf
+
+    direcciones_posibles = {} 
+    # dado que puede haber posibles resultados a la busqueda, vamos a guardar los resultados que mas
+    # se acerquen a dicha busqueda, el formato es el siguiente:
+    # {nombre_calle_completo: {'numero_mas_cercano': num, 'vertice': vertice}}
+
     for a in aristas:
-        if re.search(calle, a.data['calle'], re.I):
-            if a.origen.num == numero:
-                return a.origen
-            elif a.destino.num == numero:
-                return a.destino
-            elif abs(a.origen.num - numero) < dist_mas_cercano:
-                mas_cercano = a.origen
-                dist_mas_cercano = abs(a.origen.num - numero)
-            elif abs(a.destino.num - numero) < dist_mas_cercano:
-                mas_cercano = a.destino
-                dist_mas_cercano = abs(a.destino.num - numero)
-    return mas_cercano
+
+        if re.search(a.data['nombre_acortado'].strip(), calle, re.I):
+
+            if a.data['calle'].strip() not in direcciones_posibles.keys():
+                direcciones_posibles[a.data['calle'].strip()] = {'numero_mas_cercano': np.inf, 'vertice': None}
+
+            if abs(int(a.origen.calles[a.data['num_calle']]) - numero) < abs(direcciones_posibles[a.data['calle'].strip()]['numero_mas_cercano'] - numero):
+                direcciones_posibles[a.data['calle'].strip()] = {'numero_mas_cercano': int(a.origen.calles[a.data['num_calle']]) , 'vertice': a.origen}
+
+            if abs(int(a.destino.calles[a.data['num_calle']]) - numero) < abs(direcciones_posibles[a.data['calle'].strip()]['numero_mas_cercano'] - numero):
+                direcciones_posibles[a.data['calle'].strip()] = {'numero_mas_cercano': int(a.destino.calles[a.data['num_calle']]) , 'vertice': a.destino}
+    
+    opciones_posibles = len(direcciones_posibles.keys())
+    if opciones_posibles == 0:
+        return None
+    print(f'\n{bcolors.BOLDWHITE}¿A cual de las siguientes direcciones te refieres?{bcolors.ENDC}')
+    for i, direccion in enumerate(direcciones_posibles.keys()):
+        print(f'{bcolors.BOLDWHITE}{i+1}.{bcolors.ENDC} {bcolors.CURSIVA}{direccion}, {direcciones_posibles[direccion]["numero_mas_cercano"]}{bcolors.ENDC}')
+
+    opcion_no_valida = True
+    while opcion_no_valida:
+        try:
+            opcion = int(input(f'{bcolors.BOLDWHITE}Introduce una opcion: {bcolors.ENDC}'))
+            if opcion > 0 and opcion <= opciones_posibles:
+                opcion_no_valida = False
+            else:
+                print(f'{bcolors.BOLDRED}Opcion no valida{bcolors.ENDC}')
+        except:
+            print(f'{bcolors.BOLDRED}Opcion no valida{bcolors.ENDC}')
+    
+    return direcciones_posibles[list(direcciones_posibles.keys())[opcion-1]]['vertice']
 
 
 def encontrar_coordenadas_direccion_grafo(grafo, direccion):
-    # nos meteran el nombre de la via y el numero, separados por una coma, buscamos
-    # el vertice que este en esa calle y el numero mas cercano
+    """
+    nos introducen el nombre de la via y el numero, separados por una coma, buscamos
+    el vertice que este en esa calle y el numero mas cercano
+    """
     calle, numero = direccion.split(',')
-    calle = calle.strip().split(' ')
-    # si la calle tiene mas de una palabra, significa que es una calle con nombre
-    # por lo que nos quedamos con la ultima
-    calle = calle[-1]
+    calle = calle.strip()
     numero = int(numero.strip())
-    # buscamos el numero mas cercano
+
     vertice = encontrar_numero_mas_cercano(grafo, calle, numero)
     return vertice
 
 
-def imprimir_instrucciones_ruta(ruta, grafo):
+def cargar_instrucciones_ruta(ruta, grafo):
+    """
+    Dada una sucesion de vertices que componen la ruta, imprimimos las intrucciones para
+    ir de cada vertice a otro.
+    Para ello, vamos recorriendo la ruta y viendo que arista conecta a cada vertice con el
+    siguiente e informando al usuario de que calles tiene que seguir. Para no ser redundantes,
+    le indicamos cuantos metros tiene que permanecer el usuario en una calle hasta pasar a la 
+    siguiente, y en el momento que cambie de calle, le indicamos hacia donde tiene que girar.
+    """
+    num = 1
     instrucciones = []
+    instrucciones_sin_color = []
     i = 1
     actual = ruta[0]
     while i < len(ruta):
@@ -272,7 +532,7 @@ def imprimir_instrucciones_ruta(ruta, grafo):
         distancia = float(arista['distancia'])
         i += 1
         if i < len(ruta):
-            # vemos cual es la siguiente call
+            # vemos cual es la siguiente calle
             actual = ruta[i-1]
             arista = grafo.obtener_arista(actual, ruta[i])[0]
             calle2 = arista['calle'].strip()
@@ -287,7 +547,8 @@ def imprimir_instrucciones_ruta(ruta, grafo):
                 i += 1
         
         if i == len(ruta):
-            instrucciones.append(f'Siga recto por {calle} durante {distancia / 100} metros y llegará a su destino')
+            instrucciones.append(f'{bcolors.BOLDWHITE}{num}){bcolors.ENDC}{bcolors.CURSIVA} Siga recto por {bcolors.ENDC}{bcolors.BOLDWHITE}{calle} {bcolors.ENDC}{bcolors.CURSIVA}durante {bcolors.ENDC}{bcolors.BOLDWHITE}{distancia / 100}{bcolors.ENDC}{bcolors.CURSIVA} metros y llegará a su destino{bcolors.ENDC}')
+            instrucciones_sin_color.append(f'{num}) Siga recto por {calle} durante {distancia / 100} metros y llegará a su destino')
         else:
             # no hemos llegado al destino pero si a un cambio de calle, vamos a ver los vertices origen y destino de la calle 
             # anterior y de la calle a la que cambiamos para ver la orientacion del giro
@@ -301,11 +562,15 @@ def imprimir_instrucciones_ruta(ruta, grafo):
             if v1[0] * v2[1] - v1[1] * v2[0] < 0:
                 angulo = 2 * np.pi - angulo
             if angulo < np.pi:
-                instrucciones.append(f'Continue por {calle} durante {distancia / 100} metros y gire a la izquierda hacia {calle2}')
+                instrucciones.append(f'{bcolors.BOLDWHITE}{num}){bcolors.ENDC}{bcolors.CURSIVA} Continue por {bcolors.ENDC}{bcolors.BOLDWHITE}{calle} {bcolors.CURSIVA}{bcolors.ENDC}durante {bcolors.ENDC}{bcolors.BOLDWHITE}{distancia / 100}{bcolors.ENDC}{bcolors.CURSIVA} metros y gire a la {bcolors.CURSIVA_AMARILLO}izquierda{bcolors.ENDC}{bcolors.CURSIVA} hacia {bcolors.ENDC}{bcolors.ENDC}{bcolors.BOLDWHITE}{calle2}{bcolors.ENDC}')
+                instrucciones_sin_color.append(f'{num}) Continue por {calle} durante {distancia / 100} metros y gire a la izquierda hacia {calle2}')
             else:
-                instrucciones.append(f'Continue por {calle} durante {distancia / 100} metros y gire a la derecha hacia {calle2}')
+                instrucciones.append(f'{bcolors.BOLDWHITE}{num}){bcolors.ENDC}{bcolors.CURSIVA} Continue por {bcolors.ENDC}{bcolors.BOLDWHITE}{calle} {bcolors.CURSIVA}{bcolors.ENDC}durante {bcolors.ENDC}{bcolors.BOLDWHITE}{distancia / 100}{bcolors.ENDC}{bcolors.CURSIVA} metros y gire a la {bcolors.CURSIVA_AZUL}derecha{bcolors.ENDC}{bcolors.CURSIVA} hacia {bcolors.ENDC}{bcolors.BOLDWHITE}{calle2}{bcolors.ENDC}')
+                instrucciones_sin_color.append(f'{num}) Continue por {calle} durante {distancia / 100} metros y gire a la derecha hacia {calle2}')
 
-    return instrucciones
+        num += 1
+
+    return instrucciones, instrucciones_sin_color
 
 
 def imprimir_mapa_ruta(ruta, G):
@@ -329,169 +594,10 @@ def imprimir_mapa_ruta(ruta, G):
     pos = nx.get_node_attributes(G_ruta, 'coordenadas')
     nx.draw(G_ruta, pos, with_labels=False, node_size=20, width=10, node_color='red', edge_color='red')
     
-    nombre_archivo = input('Introduce el nombre del archivo donde se guardara el mapa: ')
+    nombre_archivo = input(f'\n{bcolors.BOLDWHITE}\nIntroduce el nombre del archivo donde se guardara el mapa: {bcolors.ENDC}\n')
     plt.savefig(f'{nombre_archivo}.png')
-    plt.show()
-
-def Menu(grafo1, grafo2, G):
-    # limipamos la pantalla
-    print('\n------------      BIENVENIDO AL GPS BROSKI      ----------------\n')
-    salir = False
-    while not salir:
-        print('Introduce el origen y destino para calcular la ruta más corta')
-        print('1. Introducir direccion')
-        print('2. Introducir coordenadas en cm')
-        # print('3. Introducir coordenadas en grados')
-        opcion_invalida = True
-        while opcion_invalida:
-            try:
-                opcion = int(input('Opcion: '))
-                if opcion in [1,2]:
-                    opcion_invalida = False
-                else:
-                    print('Elige una opcion valida')
-            except KeyboardInterrupt:
-                print('Saliendo...')
-                salir = True
-                opcion_invalida = False
-            except:
-                print('Opcion invalida')
-    
-        if opcion == 1:
-            # nos introduce las coordenadas como el nombre de una calle
-            # y el numero de la calle
-            origen_valido = False
-            while not salir and not origen_valido:
-                try:
-                    origen = input('Origen: ').strip()
-                    if origen == '':
-                        salir = True
-                    else:
-                        origen = encontrar_coordenadas_direccion_grafo(grafo1, origen)
-                        if origen == None:
-                            print('Direccion no encontrada, vuelve a intentarlo')
-                        else:
-                            origen_valido = True
-                except KeyboardInterrupt:
-                    print('Saliendo...')
-                    salir = True
-                except:
-                    print('Direccion no encontrada, vuelve a intentarlo')
-            destino_valido = False
-            while not salir and not destino_valido:
-                try:
-                    destino = input('Destino: ').strip()
-                    if destino == '':
-                        salir = True
-                    else:
-                        destino = encontrar_coordenadas_direccion_grafo(grafo1, destino)
-                        if destino == None:
-                            print('Direccion no encontrada, vuelve a intentarlo')
-                        else:
-                            destino_valido = True
-                except KeyboardInterrupt:
-                    print('Saliendo...')
-                    salir = True
-                except:
-                    print('Direccion no encontrada, vuelve a intentarlo')
-
-        elif opcion == 2:
-            # coordenadas en cm
-            origen_valido = False
-            while not salir and not origen_valido:
-                try:
-                    origen = input('Origen: ').strip()
-                    if origen == '':
-                        salir = True
-                    else:
-                        origen = [float(i) for i in origen.split(',')]
-                        if len(origen) != 2:
-                            raise ValueError
-                        origen = encontrar_coordenadas_cm_grafo(grafo2, origen)
-                        origen_valido = True
-                except KeyboardInterrupt:
-                    print('Saliendo...')
-                    salir = True
-                except:
-                    print('Coordenadas invalidas, vuelve a intentarlo')
-
-            destino_valido = False
-            while not salir:
-                try:
-                    destino = input('Destino: ').strip()
-                    if destino == '':
-                        salir = True
-                    else:
-                        destino = [float(i) for i in destino.split(',')]
-                        if len(destino) != 2:
-                            raise ValueError
-                        destino = encontrar_coordenadas_cm_grafo(grafo2, destino)
-                        destino_valido = True
-                except KeyboardInterrupt:
-                    print('Saliendo...')
-                    salir = True
-                except:
-                    print('Coordenadas invalidas, vuelve a intentarlo')
-        
-        if not salir:
-            # calculamos la ruta mas corta, primero preguntamos si prefieren distancia o tiempo
-            print('¿Quieres calcular la ruta más corta en distancia o más rápida en tiempo?')
-            print('1. Más corta')
-            print('2. Más rápida')
-            opcion = 0
-            while opcion not in [1, 2]:
-                try:
-                    opcion = int(input('Opcion: '))
-                    if opcion not in [1, 2]:
-                        raise ValueError
-                except ValueError:
-                    print('Opcion invalida, intentelo de nuevo')
-                except KeyboardInterrupt:
-                    salir = True
-                    break
-
-            if not salir:
-                if opcion == 1:
-                    grafo = grafo1
-                else:
-                    grafo = grafo2
-
-                ruta = grafo.camino_minimo(origen, destino)
-                if ruta == None:
-                    print('No se puede llegar desde el origen al destino')
-                else:
-                    print('Las instrucciones son: \n')
-                    instrucciones = imprimir_instrucciones_ruta(ruta, grafo)
-                    print('1. Mostrar instrucciones por pantalla')
-                    print('2. Guardar instrucciones en un archivo')
-                    opcion = 0
-                    while opcion not in [1, 2]:
-                        try:
-                            opcion = int(input('Opcion: '))
-                            if opcion not in [1, 2]:
-                                raise ValueError
-                        except ValueError:
-                            print('Opcion invalida, intentelo de nuevo')
-                        except KeyboardInterrupt:
-                            salir = True
-                            break
-                    
-                    if not salir:
-                        if opcion == 1:
-                            for i in instrucciones:
-                                print(i)
-                        else:
-                            nombre_archivo = input('Introduce el nombre del archivo: ')
-                            with open(f'{nombre_archivo}.txt', 'w') as f:
-                                for i in instrucciones:
-                                    f.write(i + '\n')
-                            print('Archivo guardado correctamente')
-                    
-                    input('\nPulse para ver el map con la ruta')
-                    imprimir_mapa_ruta(ruta, G)
-
-
-                
+    print(f'\n{bcolors.BOLDGREEN}Mapa guardado en {nombre_archivo}.png !!!{bcolors.ENDC}\n')
+            
 
 
 if __name__ == "__main__":
